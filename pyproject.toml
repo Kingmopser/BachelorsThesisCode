@@ -1,0 +1,24 @@
+[project]
+name = "bachelors-thesis"
+version = "0.1.0"
+requires-python = ">=3.11"
+
+[tool.pixi.workspace]
+channels = ["conda-forge"]
+platforms = ["osx-arm64"]
+
+[tool.pixi.dependencies]
+python = "3.11.*"
+numpy = ">=1.26"
+scipy = ">=1.16"
+scikit-learn = ">=1.7"
+tqdm = ">=4.67"
+pandas = ">=2.0"
+matplotlib = ">=3.8"
+
+[tool.pixi.pypi-dependencies]
+jax = "==0.7.1"
+jaxlib = "==0.7.1"
+optax = ">=0.2.1"
+blackjax = "==1.2.2"
+sklearn-contrib-bde = ">=1.0"
