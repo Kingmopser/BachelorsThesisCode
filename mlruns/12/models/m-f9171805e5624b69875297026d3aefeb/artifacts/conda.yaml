@@ -1,0 +1,24 @@
+channels:
+- conda-forge
+dependencies:
+- python=3.11.15
+- pip
+- pip:
+  - mlflow==3.11.1
+  - brotli==1.2.0
+  - click==8.3.2
+  - cloudpickle==3.1.2
+  - colorama==0.4.6
+  - numpy==2.4.3
+  - packaging==25.0
+  - pandas==2.3.3
+  - pyarrow==23.0.1
+  - pyyaml==6.0.3
+  - rich==15.0.0
+  - scikit-learn==1.8.0
+  - scipy==1.17.1
+  - sklearn-contrib-bde==1.0.1
+  - typing-extensions==4.15.0
+  - uvicorn==0.46.0
+  - watchfiles==1.1.1
+name: mlflow-env

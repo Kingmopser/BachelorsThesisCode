@@ -1,0 +1,23 @@
+artifact_path: /Users/kingmopser/BachelorThesis/BachelorsThesisCode/mlruns/12/models/m-f9171805e5624b69875297026d3aefeb/artifacts
+flavors:
+  python_function:
+    env:
+      conda: conda.yaml
+      virtualenv: python_env.yaml
+    loader_module: mlflow.sklearn
+    model_path: model.pkl
+    predict_fn: predict
+    python_version: 3.11.15
+  sklearn:
+    code: null
+    pickled_model: model.pkl
+    serialization_format: cloudpickle
+    sklearn_version: 1.8.0
+    skops_trusted_types: null
+mlflow_version: 3.11.1
+model_id: m-f9171805e5624b69875297026d3aefeb
+model_size_bytes: 12907847
+model_uuid: m-f9171805e5624b69875297026d3aefeb
+prompts: null
+run_id: b0da7cace1a5480a9dfe99735e125481
+utc_time_created: '2026-04-26 16:05:27.097266'
