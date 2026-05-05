@@ -12,7 +12,7 @@ This Repository contains the code for the evaluation Benchmark of my Bachelor's 
 
 
 ## Scope
-The goal is to implement a end to end pipeline that covers data loading, pre processing and model training and HPO. The focus would be to discover potential make or breaks during the training as well as determining suitable hyperparameter configurations by testing on an extended dataset setting. Hence, with this we establish a proper evaluation and benchmark environment that is reproducible simply by c
+The goal is to implement an end to end pipeline that covers data loading, pre processing and model training and HPO. The focus would be to discover potential make or breaks during the training as well as determining suitable hyperparameter configurations by testing on an extended dataset setting. Hence, with this we establish a reproducible evaluation and benchmark environment.
 
 ## Project Structure
 
