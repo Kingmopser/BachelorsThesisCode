@@ -1,3 +1,9 @@
 .venv
 .env
-/mlruns/*
+archive/mlruns/*
+src/mlruns/*
+ToDos.txt
+.pyc
+.pkl
+.yaml
+__pycache__

@@ -54,10 +54,10 @@ all supervised regression tasks. All datasets showcase superior RF performance c
 
 QSAR_fish_toxicity ; n = 907.0 ; big enough = 
 healthcare insurance expense; n = 1338.0; big enough = 
-QSAR-TID-11; n = 5742.0 ; big enough = 
-wine_qualityn; n = 6497.0;  ; big enough = 
-Another-Dataset-on-used-Fiat-50 ;n = 1503.0
-miami_housing; n = 13776.0
+QSAR-TID-11; n = 5742.0 ; big enough = ok
+wine_qualityn; n = 6497.0;  ; big enough = ok 
+Another-Dataset-on-used-Fiat-50 ;n = 1503.0 = ok 
+miami_housing; n = 13776.0 = ok
 
 --> basically create table already from csv. Used for explaining characteristics of data.
 
