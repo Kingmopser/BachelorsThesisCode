@@ -10,15 +10,17 @@ platforms = ["osx-arm64"]
 [tool.pixi.dependencies]
 python = "3.11.*"
 numpy = ">=1.26,<2" # just for testing, i will remove the additional contraint
-scipy = ">=1.16"
+scipy = ">=1.16,<1.17"
 scikit-learn = ">=1.7"
 tqdm = ">=4.67"
 pandas = ">=2.0"
 matplotlib = ">=3.8"
 mlflow = ">=3.1"
 ipykernel = "7.2.*"
+ipython = ">=8.20,<8.21"
 openml = ">=0.12.2,<0.13"
 optuna = ">=4.8.0,<5"
+xgboost = ">=3.2.0,<4"
 
 [tool.pixi.tasks]
 mlflow-server = "mlflow server --backend-store-uri sqlite:///$PIXI_PROJECT_ROOT/src/data/mlflow.db --default-artifact-root $PIXI_PROJECT_ROOT/src/mlruns --port 5000"
@@ -29,3 +31,5 @@ jaxlib = "==0.7.1"
 optax = ">=0.2.1"
 blackjax = "==1.2.2"
 sklearn-contrib-bde = ">=1.0"
+xgboostlss = "*"
+tabicl = "*"

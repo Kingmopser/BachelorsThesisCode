@@ -46,18 +46,20 @@ def LoadData():
     return tables # dictionary{Dataset_name: "X": {X_data}, "y": {target_col}}
 
 
-def PreProcessing(name,data,test = 0.2,random_seed=0):
+def PreProcessing(name,data,model_name="standard",test = 0.2,random_seed=0):
     
     X = data.get("X","")
     y = data.get("y","")
     
     is_binary = True if name == "QSAR-TID-11" else False
+    is_housing = True if "month_sold" in X.columns else False     
+    is_standard = True if model_name != "standard" else False     
         
     if is_binary: # for QSAR TID 11 Dataset   
         print("correct detected")
         X = X.loc[:, X.nunique() > 1]
-        
-    if "month_sold" in X.columns:
+    
+    if is_housing:
         m = X["month_sold"].astype(int) - 1  # Jan=0 ... Dec=11
         X["month_sold_sin"] = np.sin(2 * np.pi * m / 12.0)
         X["month_sold_cos"] = np.cos(2 * np.pi * m / 12.0)
@@ -70,6 +72,8 @@ def PreProcessing(name,data,test = 0.2,random_seed=0):
     #split into train and test
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test,random_state=random_seed)
     
+    if is_standard:
+        return X_train, X_test, y_train, y_test
         
     preprocessor = ColumnTransformer([("numeric",StandardScaler(),num_cols),
                              ("cat",OneHotEncoder(handle_unknown="ignore"),cat_cols)])
