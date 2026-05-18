@@ -99,33 +99,36 @@ def extractParams(paramdict):
                 }
     return params
 
-def RobustTest(X_train_HO, X_test_HO, y_train_HO, y_test_HO ,seeds,run_name):
+def RobustTest(X_train_HO, X_test_HO, y_train_HO, y_test_HO ,seeds,run_name,datasetname):    
     '''
     RobustTest would be a seperate run. So that we can log the performance of the best model. Ideally in Optuna we would have per dataset 1 HPO Study Experiment, and 1 Stresstest 
     '''
     client = MlflowClient(tracking_uri=f"sqlite:///{MLFLOW_DB}")
-    experiment = client.get_experiment_by_name("Experiment_Dataset:miami_housing")
+    experiment = client.get_experiment_by_name(f"Experiment_Dataset_{datasetname}")
     
     runs = client.search_runs(experiment_ids=[experiment.experiment_id],
-                              filter_string=f"attributes.run_name = {run_name}",
+                              filter_string=f"attributes.run_name = '{run_name}'",
                                 order_by=["attributes.start_time DESC"],
                                 max_results=1,
         )
-    
+    '''
+    Thats for BDE HPO
+    '''
     parent_run_id = runs[0].info.run_id
     best_child_run_id = client.get_run(parent_run_id).data.params["best_child_run_id"]        
     best_child_params = extractParams(client.get_run(best_child_run_id).data.params)
     
-    with mlflow.start_run(run_name=f"Robustnesstest_Data_{'miami_housing'}") as run:
+    with mlflow.start_run(run_name=f"Robustnesstest_Data_{datasetname}") as run:
         for i,seed in enumerate(seeds): 
             with mlflow.start_run(nested=True,run_name=f"test_{i}") as child_run:   
+                
                 X_train,_,y_train,_ = train_test_split(X_train_HO,y_train_HO,random_state=seed,train_size=0.8)
                 
                 #TODO: this is what need to be modular
                 
                 #initialize bde regressor with params and fit on train data
                 regressor = BdeRegressor(**best_child_params)
-                regressor.fit(X_train,y_train)
+                regressor.fit(X_train,y_train.ravel())
                 
                 #evaluate performance on test dataset
                 y_pred = regressor.predict(X_test_HO)
@@ -147,55 +150,48 @@ def RobustTest(X_train_HO, X_test_HO, y_train_HO, y_test_HO ,seeds,run_name):
                     "Winkler_Coverage": float(coverage),
                     "Negative_log_likelihood": float(nll)
                 })
+def runExperiment(datasetname,seeds,Rng_Ho_Split): #TODO : modular function for entire dataset, fitting TabpFN,catboostlss and so on. 
+    experiment_name = f"Experiment_Dataset_{datasetname}"
+    if mlflow.get_experiment_by_name(experiment_name) is None:
+        mlflow.create_experiment(
+            experiment_name,
+            artifact_location=(MLFLOW_ARTIFACT_ROOT / experiment_name).as_uri(),
+        )
+    mlflow.set_experiment(experiment_name)
+    mlflow.autolog()
+    
+    #we do preprocessing for LG,RF,CATBOOSTLSS
+    X_train_HO, X_test_HO, y_train_HO, y_test_HO, yScaler = PreProcessing(datasetname,data=datasets[datasetname],random_seed=Rng_Ho_Split) # we do 1 hold-out-split
 
 
-
-#load data : miami_housing, wine_quality ; #TODO: no preprocessing
-datasets = LoadData()
-seeds = [24,38,136]
-#preprocess
-Rng_Ho_Split = 12
-
-'''
-imagine for loop 
-'''
-
-experiment_name = f"Experiment_Dataset:{'miami_housing'}" # would be dataset name obv
-
-if mlflow.get_experiment_by_name(experiment_name) is None:
-    mlflow.create_experiment(
-        experiment_name,
-        artifact_location=(MLFLOW_ARTIFACT_ROOT / experiment_name).as_uri(),
-    )
-
-mlflow.set_experiment(experiment_name)
-mlflow.autolog()
-
-#this would happen for each dataset
-X_train_HO, X_test_HO, y_train_HO, y_test_HO, yScaler = PreProcessing("miami_housing",data=datasets["miami_housing"],random_seed=Rng_Ho_Split) # we do 1 hold-out-split
-
-# split train in to test and val
-X_train, X_test,y_train,y_test = train_test_split(X_train_HO,y_train_HO,random_state=Rng_Ho_Split,train_size=0.8)
+    # split train in to test and val
+    X_train, X_test,y_train,y_test = train_test_split(X_train_HO,y_train_HO,random_state=Rng_Ho_Split,train_size=0.8)
+            
+    with mlflow.start_run(run_name=f"HPO_Study_{datasetname}") as run:
         
-with mlflow.start_run(run_name=f"HPO_Study_{'miami_housing'}") as run:
+        n_trials = 1        
+        mlflow.log_param("n_trials",n_trials)
+        
+        study = optuna.create_study(direction="minimize")
+        
+        obj = partial(objective,X_train = X_train,X_test = X_test,y_train=y_train,y_test=y_test)
+        
+        # Continue even if individual trials fail (they will be marked as FAIL)
+        study.optimize(obj, n_trials=n_trials, catch=(Exception,))
+        
+        mlflow.log_params(study.best_params)
+        
+        mlflow.log_metrics({"best_winkler":study.best_value})
+        
+        if best_run_id := study.best_trial.user_attrs.get("run_id"):
+            mlflow.log_param("best_child_run_id",best_run_id)    
+                    
+    RobustTest(X_train_HO=X_train_HO,y_train_HO=y_train_HO,X_test_HO=X_test_HO,y_test_HO=y_test_HO, seeds=seeds, run_name=f"HPO_Study_{datasetname}",datasetname=datasetname)
+        
+if __name__ == "__main__":
     
-    n_trials = 50
-    
-    mlflow.log_param("n_trials",n_trials)
-    
-    study = optuna.create_study(direction="minimize")
-    
-    obj = partial(objective,X_train = X_train,X_test = X_test,y_train=y_train,y_test=y_test)
-    
-    # Continue even if individual trials fail (they will be marked as FAIL)
-    study.optimize(obj, n_trials=n_trials, catch=(Exception,))
-    
-    mlflow.log_params(study.best_params)
-    
-    mlflow.log_metrics({"best_winkler":study.best_value})
-    
-    if best_run_id := study.best_trial.user_attrs.get("run_id"):
-        mlflow.log_param("best_child_run_id",best_run_id)    
-                
-RobustTest(X_train_HO=X_train_HO,y_train_HO=y_train_HO,X_test_HO=X_test_HO,y_test_HO=y_test_HO, seeds=seeds, run_name=f"HPO_Study_{'miami_housing'}")
-    
+    datasets = LoadData()
+    seeds = [24,38,136]
+    #preprocess
+    Rng_Ho_Split = 12
+    runExperiment('miami_housing',seeds=seeds,Rng_Ho_Split=Rng_Ho_Split)        
