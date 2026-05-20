@@ -41,10 +41,10 @@ def objective(trial,X_train,X_test,y_train,y_test):
                 
                 #define params
                 #bde_n_members =trial.suggest_int("n_members",4,10,step =1)
-                bde_hidden_layers = trial.suggest_categorical("hidden_layers",[[16,16],[32,32],[16,16,16],[32,32,32]])
+                bde_hidden_layers = trial.suggest_categorical("hidden_layers",[[16,16],[32,32],[16,16,16,16],[32,32,32]])
                 bde_desired_energy_var_start, bde_desired_energy_var_end = trial.suggest_categorical("var_start_end",[(0.5,0.1),(0.05,0.01),(0.005,0.001),(0.0005,0.0001)])
-                bde_warmup_steps, bde_n_samples = trial.suggest_categorical("warmup_steps_n_samples",[(1000,200),(2000,400),(3000,600),(5000,1000) ])                                                                                         
-                epochs = 100
+                bde_warmup_steps, bde_n_samples = trial.suggest_categorical("warmup_steps_n_samples",[(1000,200),(2500,500),(5000,1000),(10000,5000) ])                                                                                         
+                epochs = 400
                 validation_split = 0.15 # or 0.0 damnnnn ahahah
                 patience = 10
                 
@@ -215,7 +215,8 @@ def TabICLPredictor(X_train, y_train, X_test_HO, model_seed = 12,**kwargs):
    
    return {
        "y_pred":y_pred,
-       "mu":y_pred,#requires approx
+       "mu":y_pred,
+       #sigma #requires approx
        "pi_lower":interval[:,0],
        "pi_upper":interval[:,1]
    } 
@@ -342,7 +343,7 @@ def runExperiment(datasetname, seeds, Rng_Ho_Split, run_hpo = False, n_trials = 
 if __name__ == "__main__":
     model_seed = 14
     datasets = LoadData()
-    seeds = [24]
+    seeds = [24,2,3]
     #preprocess
     Rng_Ho_Split = 12
     runExperiment('miami_housing',seeds=seeds,Rng_Ho_Split=Rng_Ho_Split,n_trials=1)        
