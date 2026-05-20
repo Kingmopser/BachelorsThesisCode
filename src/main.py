@@ -17,6 +17,7 @@ from functools import partial
 from mlflow.tracking import MlflowClient
 import ast
 import xgboost as xgb
+import traceback
 from xgboostlss.model import XGBoostLSS
 from xgboostlss.distributions.Gaussian import Gaussian
 from tabicl import TabICLRegressor
@@ -33,6 +34,12 @@ MLFLOW_DB.parent.mkdir(parents=True, exist_ok=True)
 MLFLOW_ARTIFACT_ROOT.mkdir(parents=True, exist_ok=True)
 mlflow.set_tracking_uri(f"sqlite:///{MLFLOW_DB}")
 
+BDE_GRID = {
+    "hidden_layers": ["[16,16]", "[32,32]", "[16,16,16,16]", "[32,32,32]"],
+    "var_start_end": ["(0.5,0.1)", "(0.05,0.01)", "(0.005,0.001)", "(0.0005,0.0001)"],
+    "warmup_steps_n_samples": ["(1000,200)", "(2500,500)", "(5000,1000)", "(10000,5000)"],
+}
+
 
 
 def objective(trial,X_train,X_test,y_train,y_test):
@@ -41,9 +48,17 @@ def objective(trial,X_train,X_test,y_train,y_test):
                 
                 #define params
                 #bde_n_members =trial.suggest_int("n_members",4,10,step =1)
-                bde_hidden_layers = trial.suggest_categorical("hidden_layers",[[16,16],[32,32],[16,16,16,16],[32,32,32]])
-                bde_desired_energy_var_start, bde_desired_energy_var_end = trial.suggest_categorical("var_start_end",[(0.5,0.1),(0.05,0.01),(0.005,0.001),(0.0005,0.0001)])
-                bde_warmup_steps, bde_n_samples = trial.suggest_categorical("warmup_steps_n_samples",[(1000,200),(2500,500),(5000,1000),(10000,5000) ])                                                                                         
+                bde_hidden_layers = ast.literal_eval(
+                    trial.suggest_categorical("hidden_layers", BDE_GRID["hidden_layers"])
+                )
+                bde_desired_energy_var_start, bde_desired_energy_var_end = ast.literal_eval(
+                    trial.suggest_categorical("var_start_end", BDE_GRID["var_start_end"])
+                )
+                bde_warmup_steps, bde_n_samples = ast.literal_eval(
+                    trial.suggest_categorical(
+                        "warmup_steps_n_samples", BDE_GRID["warmup_steps_n_samples"]
+                    )
+                )                                                                                         
                 epochs = 400
                 validation_split = 0.15 # or 0.0 damnnnn ahahah
                 patience = 10
@@ -54,7 +69,7 @@ def objective(trial,X_train,X_test,y_train,y_test):
                     "desired_energy_var_end": bde_desired_energy_var_end,
                     "warmup_steps":bde_warmup_steps,
                     "n_samples":bde_n_samples,
-                    "seed": Rng_Ho_Split,
+                    "seed": global_seed,
                     "epochs": epochs,
                     "validation_split": validation_split,
                     "patience":patience
@@ -107,7 +122,7 @@ def extractParams(paramdict):
     return params
 
 
-def RobustTest(X_train_HO, X_test_HO, y_train_HO, y_test_HO, seeds, run_name, datasetname):
+def RobustTest(X_train_HO, X_test_HO, y_train_HO, y_test_HO, seeds, run_name, datasetname,global_seed = 12):
     '''
     RobustTest would be a seperate run. So that we can log the performance of the best model. 
     Ideally in Optuna we would have per dataset 1 HPO Study Experiment, and 1 Stresstest 
@@ -143,7 +158,26 @@ def RobustTest(X_train_HO, X_test_HO, y_train_HO, y_test_HO, seeds, run_name, da
         for model,model_fn in models.items():
             with mlflow.start_run(nested=True,run_name=f"Model{model}_robust") as model_run:  
                 #TODO SeedRun
-                SeedRun(model_fn,seeds,X_train_HO, X_test_HO, y_train_HO, y_test_HO,best_child_params)
+                if model == "TabICL":
+                    #revert to no preprocessing but only splitting
+                    X_train_HO_tab,X_test_HO_tab, y_train_HO_tab, y_test_HO_tab = PreProcessing(datasetname,data=datasets[datasetname],random_seed=global_seed,model_name=model)
+            
+                    try:
+                        SeedRun(model_fn,seeds,X_train_HO_tab,X_test_HO_tab, y_train_HO_tab, y_test_HO_tab,best_child_params)
+                    except Exception:
+                        mlflow.set_tag("run_failed", True)
+                        mlflow.log_text(traceback.format_exc(), "error.txt")
+                        print(f"Model {model} failed")
+                    continue
+                            
+                try:
+                    SeedRun(model_fn,seeds,X_train_HO, X_test_HO, y_train_HO, y_test_HO,best_child_params)
+                except Exception:
+                    mlflow.set_tag("run_failed", True)
+                    mlflow.log_text(traceback.format_exc(), "error.txt")
+                    print(f"Model {model} failed")
+                    continue
+                    
                 
         
                     
@@ -296,7 +330,7 @@ def SeedRun(model_fn,seeds,X_train_HO, X_test_HO, y_train_HO, y_test_HO,bdeparam
                 mlflow.log_metrics({"Negative_log_likelihood": float(nll)}) 
           
                 
-def runExperiment(datasetname, seeds, Rng_Ho_Split, run_hpo = False, n_trials = 50):
+def runExperiment(datasetname, seeds, global_seed, run_hpo = False, n_trials = 50):
     
     experiment_name = f"Experiment_Dataset_{datasetname}"
     if mlflow.get_experiment_by_name(experiment_name) is None:
@@ -308,17 +342,19 @@ def runExperiment(datasetname, seeds, Rng_Ho_Split, run_hpo = False, n_trials = 
     mlflow.autolog()
     
     #we do preprocessing for LG,RF,CATBOOSTLSS
-    X_train_HO, X_test_HO, y_train_HO, y_test_HO, yScaler = PreProcessing(datasetname,data=datasets[datasetname],random_seed=Rng_Ho_Split) # we do 1 hold-out-split
+    X_train_HO, X_test_HO, y_train_HO, y_test_HO, yScaler = PreProcessing(datasetname,data=datasets[datasetname],random_seed=global_seed) # we do 1 hold-out-split
 
 
     # split train in to test and val
-    X_train, X_test,y_train,y_test = train_test_split(X_train_HO,y_train_HO,random_state=Rng_Ho_Split,train_size=0.8)
+    X_train, X_test,y_train,y_test = train_test_split(X_train_HO,y_train_HO,random_state=global_seed,train_size=0.8)
             
     if run_hpo:
         with mlflow.start_run(run_name=f"HPO_Study_{datasetname}") as run:
             mlflow.log_param("n_trials", n_trials)
 
-            study = optuna.create_study(direction="minimize")
+            # Minimal change to avoid duplicate categorical trials: use a GridSampler.
+            sampler = optuna.samplers.GridSampler(BDE_GRID)
+            study = optuna.create_study(direction="minimize", sampler=sampler)
             obj = partial(objective, X_train=X_train, X_test=X_test, y_train=y_train, y_test=y_test)
 
             # Continue even if individual trials fail (they will be marked as FAIL)
@@ -330,6 +366,7 @@ def runExperiment(datasetname, seeds, Rng_Ho_Split, run_hpo = False, n_trials = 
             if best_run_id := study.best_trial.user_attrs.get("run_id"):
                 mlflow.log_param("best_child_run_id", best_run_id)
 
+    
     RobustTest(
         X_train_HO=X_train_HO,
         y_train_HO=y_train_HO,
@@ -338,12 +375,23 @@ def runExperiment(datasetname, seeds, Rng_Ho_Split, run_hpo = False, n_trials = 
         seeds=seeds,
         run_name=f"HPO_Study_{datasetname}",
         datasetname=datasetname,
+        global_seed = global_seed
     )
         
 if __name__ == "__main__":
+    '''client = MlflowClient()
+    exp = client.get_experiment_by_name("Experiment_Dataset_healthcare_insurance_expenses")
+    client.restore_experiment(exp.experiment_id)'''
+    
     model_seed = 14
     datasets = LoadData()
-    seeds = [24,2,3]
-    #preprocess
-    Rng_Ho_Split = 12
-    runExperiment('miami_housing',seeds=seeds,Rng_Ho_Split=Rng_Ho_Split,n_trials=1)        
+    seeds = [24,35,123]
+    global_seed = 12
+    
+    try:
+        runExperiment("wine_quality",seeds=seeds,global_seed=global_seed,n_trials=64,run_hpo=True)        
+    except Exception as e:
+        print(f"Dataset loading failed | Error: {e}")
+            
+            
+   
