@@ -7,3 +7,4 @@ ToDos.txt
 .pkl
 .yaml
 __pycache__
+src/.DS_Store
