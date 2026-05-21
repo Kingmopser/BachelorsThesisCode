@@ -387,11 +387,11 @@ if __name__ == "__main__":
     datasets = LoadData()
     seeds = [24,35,123]
     global_seed = 12
-    
-    try:
-        runExperiment("wine_quality",seeds=seeds,global_seed=global_seed,n_trials=64,run_hpo=True)        
-    except Exception as e:
-        print(f"Dataset loading failed | Error: {e}")
+    for data in datasets:
+        try:
+            runExperiment(data,seeds=seeds,global_seed=global_seed,n_trials=64,run_hpo=False)        
+        except Exception as e:
+            print(f"Dataset loading failed | Error: {e}")
             
             
    
