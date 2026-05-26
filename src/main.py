@@ -12,6 +12,7 @@ import os
 from pathlib import Path
 from PreProcessing.PreProcessing import LoadData,PreProcessing
 from config.metrics import GaussianNll, WinklerScore
+from config.config import BDE_GRID
 import optuna
 from functools import partial
 from mlflow.tracking import MlflowClient
@@ -26,7 +27,7 @@ from sklearn.ensemble import RandomForestRegressor
 from scipy.stats import norm
 
 ROOT = Path(__file__).resolve().parent
-
+IQR_TO_STD = 1.3489795
 #mlflow db path 
 MLFLOW_DB = ROOT / "data" / "mlflow.db"
 MLFLOW_ARTIFACT_ROOT = ROOT / "mlruns"
@@ -34,11 +35,6 @@ MLFLOW_DB.parent.mkdir(parents=True, exist_ok=True)
 MLFLOW_ARTIFACT_ROOT.mkdir(parents=True, exist_ok=True)
 mlflow.set_tracking_uri(f"sqlite:///{MLFLOW_DB}")
 
-BDE_GRID = {
-    "hidden_layers": ["[16,16]", "[32,32]", "[16,16,16,16]", "[32,32,32]"],
-    "var_start_end": ["(0.5,0.1)", "(0.05,0.01)", "(0.005,0.001)", "(0.0005,0.0001)"],
-    "warmup_steps_n_samples": ["(1000,200)", "(2500,500)", "(5000,1000)", "(10000,5000)"],
-}
 
 
 
@@ -147,7 +143,7 @@ def RobustTest(X_train_HO, X_test_HO, y_train_HO, y_test_HO, seeds, run_name, da
     
     #current models
     models = {
-        "BDE":BDEPredictor,
+       "BDE":BDEPredictor,
         "XGboostLSS":XGBoostLSSPredictor,
         "TabICL":TabICLPredictor,
         "LG":LGPredictor,
@@ -157,19 +153,6 @@ def RobustTest(X_train_HO, X_test_HO, y_train_HO, y_test_HO, seeds, run_name, da
     with mlflow.start_run(run_name=f"Robustnesstest_Data_{datasetname}") as run:
         for model,model_fn in models.items():
             with mlflow.start_run(nested=True,run_name=f"Model{model}_robust") as model_run:  
-                #TODO SeedRun
-                if model == "TabICL":
-                    #revert to no preprocessing but only splitting
-                    X_train_HO_tab,X_test_HO_tab, y_train_HO_tab, y_test_HO_tab = PreProcessing(datasetname,data=datasets[datasetname],random_seed=global_seed,model_name=model)
-            
-                    try:
-                        SeedRun(model_fn,seeds,X_train_HO_tab,X_test_HO_tab, y_train_HO_tab, y_test_HO_tab,best_child_params)
-                    except Exception:
-                        mlflow.set_tag("run_failed", True)
-                        mlflow.log_text(traceback.format_exc(), "error.txt")
-                        print(f"Model {model} failed")
-                    continue
-                            
                 try:
                     SeedRun(model_fn,seeds,X_train_HO, X_test_HO, y_train_HO, y_test_HO,best_child_params)
                 except Exception:
@@ -201,7 +184,7 @@ def XGBoostLSSPredictor(X_train, y_train, X_test_HO, model_seed=12,**kwargs):
     
     dtrain = xgb.DMatrix(X_train, label=y_train.ravel())
     dtest  = xgb.DMatrix(X_test_HO)
-    xgblss = XGBoostLSS(Gaussian(stabilization="None", response_fn="exp", loss_fn="nll"))
+    xgblss = XGBoostLSS(Gaussian(stabilization="None", response_fn="exp", loss_fn="nll")) # mention that without stabilization, weird performance
     
     params = {
     "eta": 0.05,
@@ -212,17 +195,19 @@ def XGBoostLSSPredictor(X_train, y_train, X_test_HO, model_seed=12,**kwargs):
     "seed": model_seed,
     }
     
-    booster = xgblss.train(params=params, dtrain=dtrain, num_boost_round=300)
+    xgblss.train(params=params, dtrain=dtrain, num_boost_round=50)
+    
     pred_params = xgblss.predict(data=dtest, pred_type="parameters")
     
     mu = pred_params["loc"].to_numpy()      # naming can be loc/scale for Gaussian
     sigma = pred_params["scale"].to_numpy()
-
+    
     pred_q = xgblss.predict(
         data=dtest,
         pred_type="quantiles",
         quantiles=[0.05, 0.95],
     )
+    
     pi_lower = pred_q.iloc[:, 0].to_numpy()
     pi_upper = pred_q.iloc[:, 1].to_numpy()
     
@@ -236,24 +221,31 @@ def XGBoostLSSPredictor(X_train, y_train, X_test_HO, model_seed=12,**kwargs):
     
 def TabICLPredictor(X_train, y_train, X_test_HO, model_seed = 12,**kwargs):
 
-   tabicl = TabICLRegressor(random_state=model_seed)
-   tabicl.fit(X_train,y_train.ravel())
+    tabicl = TabICLRegressor(random_state=model_seed)
+    tabicl.fit(X_train,y_train.ravel())
    
-   y_pred = tabicl.predict(X_test_HO, output_type="mean")
+    y_pred = tabicl.predict(X_test_HO, output_type="mean")
    
-   interval = tabicl.predict(
+    interval = tabicl.predict(
         X_test_HO,
         output_type="quantiles",
         alphas=[0.05, 0.95],
     )
    
-   return {
+    iqr = tabicl.predict(
+    X_test_HO,
+    output_type="quantiles",
+    alphas=[0.25, 0.75])
+   
+    sigma = (iqr[:, 1] - iqr[:, 0]) / IQR_TO_STD
+    
+    return {
        "y_pred":y_pred,
        "mu":y_pred,
-       #sigma #requires approx
+       "sigma": sigma,#sigma #requires approx via iqr and quantile approx 
        "pi_lower":interval[:,0],
        "pi_upper":interval[:,1]
-   } 
+    } 
     
 def LGPredictor(X_train, y_train, X_test_HO, model_seed=12,**kwargs):
     
@@ -277,7 +269,7 @@ def LGPredictor(X_train, y_train, X_test_HO, model_seed=12,**kwargs):
 def RFPredictor(X_train, y_train, X_test_HO, model_seed=12,**kwargs):
     
     rf =RandomForestRegressor(random_state=model_seed,
-                            n_estimators=300,
+                            n_estimators=1000,
                             n_jobs=-1,
                             )
     rf.fit(X_train,y_train.ravel())
@@ -387,6 +379,7 @@ if __name__ == "__main__":
     datasets = LoadData()
     seeds = [24,35,123]
     global_seed = 12
+    
     for data in datasets:
         try:
             runExperiment(data,seeds=seeds,global_seed=global_seed,n_trials=64,run_hpo=False)        

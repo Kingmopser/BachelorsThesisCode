@@ -87,6 +87,7 @@ def create_table(experiment_id, run_id,dataname):
     #df = df.copy()
     #df = df.fillna(value=0)
     
+    
     df["runtime"] = (pd.to_datetime(df["end_time"])-pd.to_datetime(df["start_time"])).dt.total_seconds()
     df["parent_run_name"] = df["parent_run_name"].apply(lambda x: "BDE" if x == "ModelBDE_robust" else "XGBoostLSS" if x == "ModelXGboostLSS_robust" else "TabIcL" if x == "ModelTabICL_robust" else "LR" if x =="ModelLG_robust" else "RF")
     grouped_data =df.groupby("parent_run_name")[["metrics.RMSE",'metrics.Mean_Winkler_Score', 'metrics.Negative_log_likelihood','metrics.Winkler_Coverage',"runtime"]].agg(["mean","std"])
@@ -343,9 +344,9 @@ def create_bde_hpo_parallel_plots_by_group(
     return outputs
 
 if __name__ =="__main__":
-    #df, exp_name = create_table("5","fdd93a9bc5d342b39bb3c162bdfcd3dd")
-    #print(df)
-    outputs = create_bde_hpo_parallel_plots_by_group(
+    df, exp_name = create_table("3","4ac065f98f004eca8dfcd62075f4dbdf","healthcare_insurance")
+    print(df)
+    '''outputs = create_bde_hpo_parallel_plots_by_group(
     experiment_id="2",
     hpo_parent_run_id="7e99f7fdc8a44f1b9461c3c1bdc6ec46",
     dataname="miami_housing",
@@ -354,4 +355,4 @@ if __name__ =="__main__":
     target_metric="Mean_Winkler_Score",
     lower_is_better=True,
     color_metric=None,
-)
+)'''

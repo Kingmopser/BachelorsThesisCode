@@ -6,8 +6,16 @@ metadatapath = "/Users/kingmopser/BachelorThesis/BachelorsThesisCode/src/data/ta
 columns = [
     #"QSAR_fish_toxicity",
     # "QSAR-TID-11", # too sparse, lol
-     "wine_quality", # perfect complexity
-     "healthcare_insurance_expenses", # low complexity
-     "Another-Dataset-on-used-Fiat-50", # too low complexity
-     "miami_housing" # perfect complexity
+    # "wine_quality", # perfect complexity
+    "healthcare_insurance_expenses", # low complexity
+     #"Another-Dataset-on-used-Fiat-500", # too low complexity
+     #"miami_housing"
+  #   "superconductivity"
+     ## perfect complexity
 ]
+
+BDE_GRID = {
+    "hidden_layers": ["[16,16]", "[32,32]", "[16,16,16,16]", "[32,32,32]"],
+    "var_start_end": ["(0.5,0.1)", "(0.05,0.01)", "(0.005,0.001)", "(0.0005,0.0001)"],
+    "warmup_steps_n_samples": ["(1000,200)", "(2500,500)", "(5000,1000)", "(10000,5000)"],
+}

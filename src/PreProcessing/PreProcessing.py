@@ -32,17 +32,30 @@ def determineData(columns):
 def LoadData():
     
     tables = dict()
-    benchmark_suite = openml.study.get_suite("tabarena-v0.1")
-    task_ids = benchmark_suite.tasks  # 51 task IDs
     characteristics = determineData(columns)
+    print(f"LoadData: loading {len(characteristics)} configured dataset(s): {characteristics['name'].tolist()}", flush=True)
+    print("LoadData: fetching OpenML suite tabarena-v0.1...", flush=True)
+    '''try:
+        benchmark_suite = openml.study.get_suite("tabarena-v0.1")
+        task_ids = benchmark_suite.tasks  # 51 task IDs
+        print(f"LoadData: fetched suite with {len(task_ids)} task ids.", flush=True)
+    except Exception as exc:
+        print(
+            f"LoadData: suite lookup failed ({type(exc).__name__}: {str(exc).splitlines()[0]}). "
+            "Continuing with local metadata task ids.",
+            flush=True,
+        )'''
     
     #fetching datasets and saving as dict for easier iteration
     for id in characteristics["tid"]:
+        #print(f"LoadData: fetching task {id}...", flush=True)
         task = openml.tasks.get_task(id)
+        print(f"LoadData: fetching dataset for task {id}...", flush=True)
         df = task.get_dataset()
+        #print(f"LoadData: converting dataset {df.name} to dataframe...", flush=True)
         X, y, _, _ = df.get_data(target=task.target_name, dataset_format="dataframe")
         tables.update({df.name: {"X":X,"y":y.values.reshape(-1,1)}})
-        print(f"Successfully loaded dataset {df.name} | tid : {id}")
+        print(f"Successfully loaded dataset {df.name} | tid : {id}", flush=True)
     return tables # dictionary{Dataset_name: "X": {X_data}, "y": {target_col}}
 
 
@@ -53,8 +66,7 @@ def PreProcessing(name,data,model_name="standard",test = 0.2,random_seed=0):
     
     is_binary = True if name == "QSAR-TID-11" else False
     is_housing = True if "month_sold" in X.columns else False     
-    is_standard = True if model_name != "standard" else False     
-        
+    is_standard = True if model_name != "standard" else False        
     if is_binary: # for QSAR TID 11 Dataset   
         print("correct detected")
         X = X.loc[:, X.nunique() > 1]
