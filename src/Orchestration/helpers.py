@@ -10,6 +10,7 @@ import mlflow
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import re
 ROOT = Path(__file__).resolve().parent.parent
 
 #mlflow db path 
@@ -19,6 +20,8 @@ CLIENT = MlflowClient(tracking_uri=f"sqlite:///{MLFLOW_DB}")
 mlflow.set_tracking_uri(f"sqlite:///{MLFLOW_DB}")
 
 from mlflow.tracking import MlflowClient
+
+
 
 def create_table(experiment_id, run_id,dataname):
     root_run_id = run_id
@@ -105,10 +108,12 @@ def create_table(experiment_id, run_id,dataname):
 
     latex = final_df.to_latex(index=False, escape=False)
     
-    with open(VISUALS / f"metrics_{dataname}.tex","w") as f:
+    with open(VISUALS/ "ablation" / f"metrics_{dataname}.tex","w") as f:
         f.write(latex)
     
     return df, experiment_name
+
+
 
 def create_bde_hpo_parallel_plot(
     experiment_id: str,
@@ -343,8 +348,15 @@ def create_bde_hpo_parallel_plots_by_group(
 
     return outputs
 
+
+
+
+def ablation_plot():
+    
+    pass
+
 if __name__ =="__main__":
-    df, exp_name = create_table("3","4ac065f98f004eca8dfcd62075f4dbdf","healthcare_insurance")
+    df, exp_name = create_table("5","021de29ea6b34023a3c62202d4a0060a","fiat_1200")
     print(df)
     '''outputs = create_bde_hpo_parallel_plots_by_group(
     experiment_id="2",
