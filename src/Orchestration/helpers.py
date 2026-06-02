@@ -22,6 +22,43 @@ mlflow.set_tracking_uri(f"sqlite:///{MLFLOW_DB}")
 from mlflow.tracking import MlflowClient
 
 
+def fetch_direct_child_runs(experiment_id, run_id, include_parent_metadata=True):
+    """
+    Fetch all direct child runs for one MLflow parent run.
+
+    This is intentionally non-recursive and only returns the runs whose
+    ``tags.mlflow.parentRunId`` matches ``run_id``.
+    """
+    root_run = mlflow.get_run(run_id)
+    exp_id = root_run.info.experiment_id
+    if experiment_id is not None and str(experiment_id) != str(exp_id):
+        print(
+            f"Warning: provided experiment_id={experiment_id} but root run belongs to experiment_id={exp_id}."
+        )
+
+    exp = mlflow.get_experiment(exp_id)
+    experiment_name = exp.name if exp is not None else None
+
+    child_runs = mlflow.search_runs(
+        experiment_ids=[exp_id],
+        filter_string=f"tags.mlflow.parentRunId = '{run_id}'",
+        output_format="pandas",
+    )
+
+    if child_runs.empty:
+        return pd.DataFrame(), experiment_name
+
+    child_runs = child_runs.copy()
+    child_runs["experiment_name"] = experiment_name
+
+    if include_parent_metadata:
+        child_runs["parent_run_id"] = run_id
+        child_runs["parent_run_name"] = root_run.data.tags.get("mlflow.runName")
+        child_runs["parent_experiment_id"] = exp_id
+        child_runs["parent_experiment_name"] = experiment_name
+
+    return child_runs, experiment_name
+
 
 def create_table(experiment_id, run_id,dataname):
     root_run_id = run_id
@@ -356,8 +393,10 @@ def ablation_plot():
     pass
 
 if __name__ =="__main__":
-    df, exp_name = create_table("5","021de29ea6b34023a3c62202d4a0060a","fiat_1200")
-    print(df)
+  #  df, exp_name = create_table("5",
+   #                             "021de29ea6b34023a3c62202d4a0060a",
+  #                              "fiat_1200")
+   # print(df)
     '''outputs = create_bde_hpo_parallel_plots_by_group(
     experiment_id="2",
     hpo_parent_run_id="7e99f7fdc8a44f1b9461c3c1bdc6ec46",
@@ -368,3 +407,8 @@ if __name__ =="__main__":
     lower_is_better=True,
     color_metric=None,
 )'''
+
+    df, exp_name = fetch_direct_child_runs("2", "7e99f7fdc8a44f1b9461c3c1bdc6ec46")
+    print(exp_name)
+    print(df.shape)
+    print(df[["run_id", "parent_run_name"]].head())
