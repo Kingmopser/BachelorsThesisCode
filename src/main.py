@@ -55,7 +55,7 @@ def objective(trial,X_train,X_test,y_train,y_test):
                         "warmup_steps_n_samples", BDE_GRID["warmup_steps_n_samples"]
                     )
                 )                                                                                         
-                epochs = 400
+                epochs = 1200
                 validation_split = 0.15 # or 0.0 damnnnn ahahah
                 patience = 10
                 
@@ -113,7 +113,7 @@ def extractParams(paramdict):
                     "seed": int(paramdict.get("seed")),
                     "epochs":int(paramdict.get("epochs")),
                     "validation_split": float(paramdict.get("validation_split")),
-                    "patience":int(paramdict.get("patience"))
+                    "patience": None if paramdict.get("patience") in (None, "", "none", "None") else int(paramdict.get("patience"))
                 }
     return params
 
@@ -144,10 +144,10 @@ def RobustTest(X_train_HO, X_test_HO, y_train_HO, y_test_HO, seeds, run_name, da
     #current models
     models = {
        "BDE":BDEPredictor,
-        "XGboostLSS":XGBoostLSSPredictor,
-        "TabICL":TabICLPredictor,
-        "LG":LGPredictor,
-        "RF":RFPredictor
+        #"XGboostLSS":XGBoostLSSPredictor,
+        #"TabICL":TabICLPredictor,
+        #"LG":LGPredictor,
+        #"RF":RFPredictor
     }
     
     with mlflow.start_run(run_name=f"Robustnesstest_Data_{datasetname}") as run:
@@ -166,12 +166,113 @@ def RobustTest(X_train_HO, X_test_HO, y_train_HO, y_test_HO, seeds, run_name, da
                     
 def BDEPredictor(X_train, y_train, X_test_HO,best_child_params,model_seed=12,**kwargs):
     
-    regressor = BdeRegressor(**best_child_params)
+    params = dict(best_child_params)  # copy
+
+    params["epochs"] = 800
+    params["patience"] = None
+    #del best_child_params["epochs"]
+    #del best_child_params["patience"]
+    #del best_child_params["validation_split"]
+
+    #best_child_params.update({"epochs":800})
+    #best_child_params.update({"patience":10})
+    def _mlflow_safe(v):
+        # MLflow's UI can display `None` as empty; stringify for clarity.
+        return "none" if v is None else v
+
+    mlflow.log_params(
+        {
+            "epochs": _mlflow_safe(params.get("epochs")),
+            "patience": _mlflow_safe(params.get("patience")),
+            "validation_split": _mlflow_safe(params.get("validation_split")),
+            "warmup_steps": params.get("warmup_steps"),
+            "n_samples": params.get("n_samples"),
+            "seed": params.get("seed"),
+        }
+    )
+    print(params)
+    
+    # best_child_params.update({"epochs": 1200})
+    regressor = BdeRegressor(**params)
     regressor.fit(X_train,y_train.ravel())
+    
+    try:
+        if getattr(regressor, "_bde", None) is not None and getattr(regressor._bde, "history", None):
+            model0 = regressor._bde.history.get("Model0", {})
+            epoch_history = model0.get("epoch", [])
+            mlflow.log_param("bde_history_length_model0", int(len(epoch_history)))
+            if "stop_epoch" in model0:
+                mlflow.log_param("bde_stop_epoch_model0", int(model0.get("stop_epoch")))
+
+            trainloss = model0.get("trainloss")
+            valloss = model0.get("valloss")
+            snapshot_index = 400
+            checkpoint_epochs = [100, 200, 400, 600]
+
+            def _log_loss_history(loss_name, loss_values):
+                if loss_values is None or len(loss_values) == 0:
+                    return
+
+                mlflow.log_metric(
+                    f"bde_{loss_name}_final_value_model0",
+                    float(loss_values[-1]),
+                )
+                mlflow.log_param(
+                    f"bde_{loss_name}_final_history_index_model0",
+                    int(len(loss_values) - 1),
+                )
+
+                if epoch_history and len(epoch_history) == len(loss_values):
+                    mlflow.log_param(
+                        f"bde_{loss_name}_final_epoch_value_model0",
+                        int(epoch_history[-1]),
+                    )
+
+                if len(loss_values) > snapshot_index:
+                    mlflow.log_metric(
+                        f"bde_{loss_name}_history_idx_{snapshot_index}_value_model0",
+                        float(loss_values[snapshot_index]),
+                    )
+                    mlflow.log_param(
+                        f"bde_{loss_name}_history_idx_{snapshot_index}_model0",
+                        snapshot_index,
+                    )
+                    if epoch_history and len(epoch_history) > snapshot_index:
+                        mlflow.log_param(
+                            f"bde_{loss_name}_epoch_value_at_history_idx_{snapshot_index}_model0",
+                            int(epoch_history[snapshot_index]),
+                        )
+
+                for checkpoint_epoch in checkpoint_epochs:
+                    checkpoint_idx = checkpoint_epoch - 1
+                    if checkpoint_idx < 0 or len(loss_values) <= checkpoint_idx:
+                        continue
+
+                    mlflow.log_metric(
+                        f"bde_{loss_name}_epoch_{checkpoint_epoch}_value_model0",
+                        float(loss_values[checkpoint_idx]),
+                    )
+                    mlflow.log_param(
+                        f"bde_{loss_name}_history_idx_for_epoch_{checkpoint_epoch}_model0",
+                        int(checkpoint_idx),
+                    )
+                    if epoch_history and len(epoch_history) > checkpoint_idx:
+                        mlflow.log_param(
+                            f"bde_{loss_name}_actual_epoch_value_for_epoch_{checkpoint_epoch}_model0",
+                            int(epoch_history[checkpoint_idx]),
+                        )
+
+            if trainloss is not None and len(trainloss) > 0:
+                _log_loss_history("trainloss", trainloss)
+            if valloss is not None and len(valloss) > 0:
+                _log_loss_history("valloss", valloss)
+    except Exception:
+        pass
+    
     y_pred = regressor.predict(X_test_HO)
     mu,sigma = regressor.predict(X_test_HO,mean_and_std=True)
     _, intervals = regressor.predict(X_test_HO, credible_intervals=[0.05, 0.95])
-    
+        
     return {
         "y_pred":y_pred,       
         "mu": mu,
@@ -382,7 +483,7 @@ if __name__ == "__main__":
     
     for data in datasets:
         try:
-            runExperiment(data,seeds=seeds,global_seed=global_seed,n_trials=64,run_hpo=False)        
+            runExperiment(data,seeds=seeds,global_seed=global_seed,n_trials=3,run_hpo=False)        
         except Exception as e:
             print(f"Dataset loading failed | Error: {e}")
             
