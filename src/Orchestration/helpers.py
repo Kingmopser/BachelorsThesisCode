@@ -393,10 +393,10 @@ def ablation_plot():
     pass
 
 if __name__ =="__main__":
-  #  df, exp_name = create_table("5",
-   #                             "021de29ea6b34023a3c62202d4a0060a",
-  #                              "fiat_1200")
-   # print(df)
+    df, exp_name = create_table("2",
+                                "2131cd77a5604c68820423a43f165504",
+                                "miami_housing_ablation")
+    print(df)
     '''outputs = create_bde_hpo_parallel_plots_by_group(
     experiment_id="2",
     hpo_parent_run_id="7e99f7fdc8a44f1b9461c3c1bdc6ec46",
@@ -408,7 +408,7 @@ if __name__ =="__main__":
     color_metric=None,
 )'''
 
-    df, exp_name = fetch_direct_child_runs("2", "7e99f7fdc8a44f1b9461c3c1bdc6ec46")
+''' df, exp_name = fetch_direct_child_runs("2", "7e99f7fdc8a44f1b9461c3c1bdc6ec46")
     print(exp_name)
     print(df.shape)
-    print(df[["run_id", "parent_run_name"]].head())
+    print(df[["run_id", "parent_run_name"]].head())'''
