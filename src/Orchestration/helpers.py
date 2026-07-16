@@ -3,24 +3,18 @@ helper functions for creating summary tables and plots
 '''
 
 from mlflow.tracking import MlflowClient
-import matplotlib.pyplot as plt
 from pathlib import Path
 import ast
 import mlflow
 import numpy as np
 import pandas as pd
-import plotly.express as px
 import plotly.graph_objects as go
-import re
 ROOT = Path(__file__).resolve().parent.parent
 
 #mlflow db path 
 MLFLOW_DB = ROOT / "data" / "mlflow.db"
 VISUALS = ROOT / "visuals"
-CLIENT = MlflowClient(tracking_uri=f"sqlite:///{MLFLOW_DB}")
 mlflow.set_tracking_uri(f"sqlite:///{MLFLOW_DB}")
-
-from mlflow.tracking import MlflowClient
 
 
 def fetch_direct_child_runs(experiment_id, run_id, include_parent_metadata=True):

@@ -43,7 +43,8 @@ The main benchmark is executed from `src/main.py`. Ablation studies are not part
 │   └── visuals/
 └── archive/
     └── examples/
-        ├── hpo_tables.ipynb
+        ├── HPO_Tables_Early_Stopping.ipynb
+        ├── Architecture_Ablation_Plot.ipynb
         ├── 4_4_Ablation.ipynb
         └── plot_test.ipynb
 ```
@@ -285,16 +286,21 @@ The notebooks in `archive/examples/` were used for exploratory analysis and thes
 
 Important notebooks:
 
-- `archive/examples/hpo_tables.ipynb`: creates raw and aggregated HPO tables for a selected MLflow HPO run. To use it, update the `DATASET_SLUG`, `EXPERIMENT_ID`, and `HPO_PARENT_RUN_ID` values in the configuration cell and run the notebook sections needed for raw HPO tables, aggregated HPO tables, or early-stopping summaries. Outputs are written to `src/visuals/raw/`.
+- `archive/examples/HPO_Tables_Early_Stopping.ipynb`: creates raw and aggregated HPO tables for a selected MLflow HPO run. To use it, update the `DATASET_SLUG`, `EXPERIMENT_ID`, and `HPO_PARENT_RUN_ID` values in the configuration cell and run the notebook sections needed for raw HPO tables, aggregated HPO tables, or early-stopping summaries. Outputs are written to `src/visuals/raw/`.
+- `archive/examples/Architecture_Ablation_Plot.ipynb`: creates the compact architecture-ablation plot from the manually prepared ablation values.
 - `archive/examples/4_4_Ablation.ipynb`: creates the architecture ablation plots used in the thesis.
-- `archive/examples/plot_test.ipynb`: creates epoch-vs-baseline plots.
+- `archive/examples/plot_test.ipynb`: creates the posterior illustration, the epoch-ablation result table, and the epoch-vs-baseline plots. The notebook is exploratory, but its setup cell resolves paths from the repository root; generated tables are written to `src/visuals/raw/`, and generated ablation plots are written to `src/visuals/ablation/`.
 
 Some thesis tables, such as manually written search-space definitions, were created separately and are stored as generated visual/table artifacts.
 
 ## Reproducibility Notes
 
 - The project is designed around the Pixi environment defined by `pyproject.toml` and `pixi.lock`.
-- Datasets are loaded from OpenML using task metadata in `src/data/task_metadata_tabarena51.csv`.
+- The lock file contains package resolutions for `osx-arm64` and `linux-64`.
+- Datasets are loaded from OpenML using task metadata in `src/data/task_metadata_tabarena51.csv` and require internet to load.
 - MLflow stores experiment metadata in `src/data/mlflow.db`.
 - The full benchmark can be computationally expensive and is not intended as a quick smoke test.
 - The code path in `src/main.py` is the main reproducible benchmark path; notebooks are secondary analysis artifacts.
+- Start the MLflow server before running `src/main.py`; otherwise experiment logging may fail.
+- Existing MLflow artifacts are generated outputs and may contain metadata from the machine on which they were created.
+- For a quick feasibility run, reduce `DATASETS`, `ROBUST_SEEDS`, or `n_trials` in `src/config/config.py` / `src/main.py`.
