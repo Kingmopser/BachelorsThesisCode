@@ -189,7 +189,7 @@ The main benchmark follows this sequence:
 6. The robustness comparison is performed across the configured `ROBUST_SEEDS`.
 7. Results are logged to MLflow.
 
-The HPO is only performed for the BDE model. Random Forest, Linear Regression, TabICL, and XGBoostLSS are evaluated with fixed configurations rather than separate HPO searches.
+The HPO is only performed for the BDE model. Random Forest, Linear Regression, TabICLv2, and XGBoostLSS are evaluated with fixed configurations rather than separate HPO searches.
 
 ## Metrics
 
