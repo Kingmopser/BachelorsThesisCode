@@ -1,4 +1,3 @@
-
 ![Python](https://img.shields.io/badge/Python-3.11-3776AB?style=flat&logo=python&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-green?style=flat)
 ![JAX](https://img.shields.io/badge/JAX-0.7.1-A020F0?style=flat&logo=google&logoColor=white)
@@ -6,60 +5,278 @@
 ![scikit-learn](https://img.shields.io/badge/scikit--learn-1.7+-F7931E?style=flat&logo=scikitlearn&logoColor=white)
 ![Pixi](https://img.shields.io/badge/Pixi-env-FFD700?style=flat&logo=conda-forge&logoColor=black)
 
-# Evaluating MILE based Bayesian Deep Ensembles: A Benchmark for Predictive Accuracy and Uncertainty Quantification
+# Evaluating MILE-Based Bayesian Deep Ensembles
 
-This Repository contains the code for the evaluation Benchmark of my Bachelor's Thesis. 
+This repository contains the code for the benchmark experiments of my Bachelor's thesis:
 
+**Evaluating MILE-Based Bayesian Deep Ensembles: A Benchmark for Predictive Accuracy and Uncertainty Quantification**
 
-## Scope
-The goal is to implement an end to end pipeline that covers data loading, pre processing and model training and HPO. The focus would be to discover potential make or breaks during the training as well as determining suitable hyperparameter configurations by testing on an extended dataset setting. Hence, with this we establish a reproducible evaluation and benchmark environment.
+The benchmark loads selected OpenML regression datasets, preprocesses them, performs hyperparameter optimization for the Bayesian Deep Ensemble (BDE), and compares the resulting BDE model against additional tabular regression baselines across multiple random seeds.
+
+The main benchmark is executed from `src/main.py`. Ablation studies are not part of the default benchmark run; they are performed by manually adjusting the BDE configuration and selected dataset.
+
+![Automated pipeline diagram](src/visuals/automated_pipeline_diagram.jpg)
 
 ## Project Structure
 
-## high level architecture
+```text
+.
+├── README.md
+├── pyproject.toml
+├── pixi.lock
+├── scripts/
+│   └── patch_bde_patience_none.py
+├── src/
+│   ├── main.py
+│   ├── config/
+│   │   ├── config.py
+│   │   └── metrics.py
+│   ├── PreProcessing/
+│   │   └── PreProcessing.py
+│   ├── Orchestration/
+│   │   ├── helpers.py
+│   │   └── ablation_metrics.py
+│   ├── data/
+│   │   ├── mlflow.db
+│   │   └── task_metadata_tabarena51.csv
+│   ├── mlruns/
+│   └── visuals/
+└── archive/
+    └── examples/
+        ├── hpo_tables.ipynb
+        ├── 4_4_Ablation.ipynb
+        └── plot_test.ipynb
+```
 
-## setup 
+The most important files are:
 
-#### 1. install pixi if not present 
+- `src/main.py`: loads the data and runs the main benchmark.
+- `src/config/config.py`: defines datasets, seeds, BDE hyperparameter grid, and MLflow paths.
+- `src/config/metrics.py`: contains the implemented uncertainty metrics.
+- `src/PreProcessing/PreProcessing.py`: loads OpenML datasets and applies preprocessing.
+- `src/Orchestration/helpers.py`: creates summary tables and HPO parallel plots from MLflow runs.
+- `src/Orchestration/ablation_metrics.py`: contains helper functions for ablation-specific tables.
+- `archive/examples/`: contains exploratory notebooks used for thesis figures and additional analyses.
+
+## Environment
+
+The environment is managed with Pixi. The relevant dependency definitions are stored in:
+
+- `pyproject.toml`
+- `pixi.lock`
+
+Use these files to reproduce the same package environment.
+
+Install Pixi if it is not already available:
+
 ```bash
 pip install pixi
 ```
-#### 2. activate determinstic environment
-```bash
-pixi install 
-```
-#### 3. activate mlflow server
-```bash
-pixi run mlflow server --port 5000
-```
-#### 4. run scripts for experiment
 
-*tbd*
-```bash
-import openml
-
-benchmark_suite = openml.study.get_suite("tabarena-v0.1")
-task_ids = benchmark_suite.tasks  # 51 task IDs
-
-task = openml.tasks.get_task(task_ids[0])
-dataset = task.get_dataset()
-X, y, _, _ = dataset.get_data(target=task.target_name, dataset_format="dataframe")
-```
-
-#### 1. possible dataset selection : 
+Install the project environment:
 
 ```bash
-all supervised regression tasks. All datasets showcase superior RF performance compared to Linear Regression 
-
-
-QSAR_fish_toxicity ; n = 907.0 ; big enough = 
-healthcare insurance expense; n = 1338.0; big enough = 
-QSAR-TID-11; n = 5742.0 ; big enough = ok
-wine_qualityn; n = 6497.0;  ; big enough = ok 
-Another-Dataset-on-used-Fiat-50 ;n = 1503.0 = ok 
-miami_housing; n = 13776.0 = ok
-
---> basically create table already from csv. Used for explaining characteristics of data.
-
-load 3-5 datasets
+pixi install
 ```
+
+## MLflow Tracking
+
+The benchmark logs all experiment results with MLflow.
+
+Start the MLflow server in a separate terminal:
+
+```bash
+pixi run mlflow-server
+```
+
+The Pixi task is defined in `pyproject.toml` and uses:
+
+```text
+backend store: src/data/mlflow.db
+artifact root: src/mlruns
+port: 5001
+```
+
+The `src/mlruns` directory is created automatically once experiments are executed.
+
+## Configuration
+
+The benchmark is configured in `src/config/config.py`.
+
+The main configuration values are:
+
+```python
+GLOBAL_SEED = 12
+ROBUST_SEEDS = [24, 35, 123]
+
+DATASETS = [
+    "wine_quality",
+    "healthcare_insurance_expenses",
+    "Another-Dataset-on-used-Fiat-500",
+    "miami_housing",
+]
+
+BDE_GRID = {
+    "hidden_layers": ["[4,4]", "[1]", "[4]", "[8]"],
+    "var_start_end": ["(0.5,0.1)"],
+    "warmup_steps_n_samples": ["(2500,500)"],
+    "epochs": ["25", "50", "75"],
+}
+```
+
+`DATASETS` controls which OpenML datasets are loaded. `BDE_GRID` controls the BDE hyperparameter combinations evaluated during HPO. `GLOBAL_SEED` controls the deterministic holdout split and model seed. `ROBUST_SEEDS` controls the repeated seed runs used in the robustness comparison.
+
+## Running The Main Benchmark
+
+After installing the environment and starting MLflow, run the benchmark from the repository root:
+
+```bash
+pixi run python src/main.py
+```
+
+The main entry point is:
+
+```python
+if __name__ == "__main__":
+    datasets = LoadData()
+
+    for data in datasets:
+        try:
+            runExperiment(
+                data,
+                seeds=ROBUST_SEEDS,
+                global_seed=GLOBAL_SEED,
+                n_trials=1,
+                run_hpo=True,
+            )
+        except Exception as e:
+            print(f"Dataset loading failed | Error: {e}")
+```
+
+The number of HPO trials and whether HPO is executed can be changed in the `runExperiment` call.
+
+The function definition is:
+
+```python
+def runExperiment(datasetname, seeds, global_seed, run_hpo=False, n_trials=50):
+```
+
+The important parameters are:
+
+- `datasetname`: name of the dataset to run.
+- `seeds`: list of robustness seeds.
+- `global_seed`: seed used for the main holdout split.
+- `run_hpo`: whether to run BDE HPO before the robustness test.
+- `n_trials`: number of Optuna grid trials to evaluate.
+
+If `run_hpo=False`, a previous HPO run for the same dataset must already exist in MLflow, because the robustness test loads the best BDE configuration from the latest `HPO_Study_<dataset>` run.
+
+## Experiment Flow
+
+The main benchmark follows this sequence:
+
+1. `LoadData()` reads the configured dataset names from `src/config/config.py`.
+2. The selected OpenML tasks are loaded using `src/data/task_metadata_tabarena51.csv`.
+3. `PreProcessing()` creates the train/test split and applies scaling and one-hot encoding.
+4. BDE HPO is performed with Optuna's `GridSampler`.
+5. The best BDE configuration is selected according to the mean Winkler score.
+6. The robustness comparison is performed across the configured `ROBUST_SEEDS`.
+7. Results are logged to MLflow.
+
+The HPO is only performed for the BDE model. Random Forest, Linear Regression, TabICL, and XGBoostLSS are evaluated with fixed configurations rather than separate HPO searches.
+
+## Metrics
+
+The benchmark evaluates predictive accuracy and uncertainty quality.
+
+Implemented in `src/config/metrics.py`:
+
+```python
+def WinklerScore(y_val, pi_lower, pi_upper, alpha=0.1, returnCoverage=False):
+```
+
+```python
+def GaussianNll(y, mu, sigma, eps=1e-6):
+```
+
+Logged metrics include:
+
+- RMSE
+- Mean Winkler Score
+- Winkler coverage
+- Negative log-likelihood
+
+## Results And Plot Generation
+
+MLflow stores the experiment metadata in:
+
+```text
+src/data/mlflow.db
+```
+
+MLflow artifacts are written to:
+
+```text
+src/mlruns/
+```
+
+The helper functions in `src/Orchestration/helpers.py` create result tables and HPO visualizations from MLflow runs.
+
+For summary tables:
+
+```python
+def create_table(experiment_id, run_id, dataname):
+```
+
+For BDE HPO parallel plots:
+
+```python
+def create_bde_hpo_parallel_plot(
+    experiment_id,
+    hpo_parent_run_id,
+    dataname,
+    param_cols,
+    target_metric,
+    visuals_dir=VISUALS,
+    lower_is_better=True,
+    color_metric=None,
+    fixed_param_filters=None,
+    color_group_param=None,
+):
+```
+
+The user provides the relevant MLflow experiment ID, run ID, and dataset name. The helper then queries MLflow and exports the corresponding table or plot.
+
+## Ablation Studies
+
+Ablation studies are not executed automatically by `src/main.py`.
+
+To perform an ablation study, manually adjust the relevant BDE settings in `src/config/config.py`, select the target dataset, and rerun the experiment. The resulting MLflow run can then be processed with the orchestration helpers or the ablation notebooks.
+
+The ablation helper module is:
+
+```text
+src/Orchestration/ablation_metrics.py
+```
+
+## Notebooks And Archived Analysis
+
+The notebooks in `archive/examples/` were used for exploratory analysis and thesis figure generation. They are not required for the main benchmark execution.
+
+Important notebooks:
+
+- `archive/examples/hpo_tables.ipynb`: creates raw and aggregated HPO tables for a selected MLflow HPO run.
+- `archive/examples/4_4_Ablation.ipynb`: creates the architecture ablation plots used in the thesis.
+- `archive/examples/plot_test.ipynb`: creates epoch-vs-baseline plots.
+- `archive/examples/data_exploring.ipynb`: contains initial OpenML dataset exploration.
+
+Some thesis tables, such as manually written search-space definitions, were created separately and are stored as generated visual/table artifacts.
+
+## Reproducibility Notes
+
+- The project is designed around the Pixi environment defined by `pyproject.toml` and `pixi.lock`.
+- Datasets are loaded from OpenML using task metadata in `src/data/task_metadata_tabarena51.csv`.
+- MLflow stores experiment metadata in `src/data/mlflow.db`.
+- The full benchmark can be computationally expensive and is not intended as a quick smoke test.
+- The code path in `src/main.py` is the main reproducible benchmark path; notebooks are secondary analysis artifacts.
+
