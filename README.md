@@ -45,7 +45,6 @@ The main benchmark is executed from `src/main.py`. Ablation studies are not part
     └── examples/
         ├── HPO_Tables_Early_Stopping.ipynb
         ├── Architecture_Ablation_Plot.ipynb
-        ├── 4_4_Ablation.ipynb
         └── plot_test.ipynb
 ```
 
@@ -288,7 +287,6 @@ Important notebooks:
 
 - `archive/examples/HPO_Tables_Early_Stopping.ipynb`: creates raw and aggregated HPO tables for a selected MLflow HPO run. To use it, update the `DATASET_SLUG`, `EXPERIMENT_ID`, and `HPO_PARENT_RUN_ID` values in the configuration cell and run the notebook sections needed for raw HPO tables, aggregated HPO tables, or early-stopping summaries. Outputs are written to `src/visuals/raw/`.
 - `archive/examples/Architecture_Ablation_Plot.ipynb`: creates the compact architecture-ablation plot from the manually prepared ablation values.
-- `archive/examples/4_4_Ablation.ipynb`: creates the architecture ablation plots used in the thesis.
 - `archive/examples/plot_test.ipynb`: creates the posterior illustration, the epoch-ablation result table, and the epoch-vs-baseline plots. The notebook is exploratory, but its setup cell resolves paths from the repository root; generated tables are written to `src/visuals/raw/`, and generated ablation plots are written to `src/visuals/ablation/`.
 
 Some thesis tables, such as manually written search-space definitions, were created separately and are stored as generated visual/table artifacts.
