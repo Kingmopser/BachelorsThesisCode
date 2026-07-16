@@ -1,30 +1,36 @@
 import pandas as pd
 import numpy as np
 import openml
-from sklearn.preprocessing import StandardScaler,RobustScaler,LabelEncoder,OneHotEncoder
-from sklearn.pipeline import Pipeline
-from sklearn.metrics import root_mean_squared_error
+from sklearn.preprocessing import StandardScaler,OneHotEncoder
 from sklearn.model_selection import train_test_split
 from sklearn.compose import ColumnTransformer
 from pathlib import Path
-from config.config import metadatapath, columns
+from config.config import METADATA_PATH, DATASETS
 # loading datasets used by tabarena
 
 # specify required datasets. 
 ROOT = Path(__file__).resolve().parent.parent
+VISUALS_RAW = ROOT / "visuals" / "raw"
 
 #create latex table
     
-def CreateTable(characteristics): 
+def CreateTable(characteristics, output_path=None): 
     
     table_df_latex=characteristics.to_latex(caption="Dataset characterstics including shape and dimensions.")
-    with open("df_table.tex","w") as f:
+    if output_path is None:
+        output_path = VISUALS_RAW / "dataset_complexity.tex"
+    else:
+        output_path = Path(output_path)
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_path,"w") as f:
         f.write(table_df_latex)
+    return output_path
     
     
 def determineData(columns): 
     #get attributes of datatable
-    dfs = pd.read_csv(metadatapath)
+    dfs = pd.read_csv(METADATA_PATH)
 
     characteristics=dfs.loc[dfs["name"].isin(columns),:][["tid","name","NumberOfFeatures","target_feature","NumberOfFeatures","NumberOfInstances","NumberOfNumericFeatures","NumberOfSymbolicFeatures"]]                                                                                                          
     return characteristics
@@ -32,7 +38,7 @@ def determineData(columns):
 def LoadData():
     
     tables = dict()
-    characteristics = determineData(columns)
+    characteristics = determineData(DATASETS)
     print(f"LoadData: loading {len(characteristics)} configured dataset(s): {characteristics['name'].tolist()}", flush=True)
     print("LoadData: fetching OpenML suite tabarena-v0.1...", flush=True)
     '''try:
@@ -83,10 +89,7 @@ def PreProcessing(name,data,model_name="standard",test = 0.2,random_seed=0):
     
     #split into train and test
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test,random_state=random_seed)
-    
-    if is_standard:
-        return X_train, X_test, y_train, y_test
-        
+         
     preprocessor = ColumnTransformer([("numeric",StandardScaler(),num_cols),
                              ("cat",OneHotEncoder(handle_unknown="ignore"),cat_cols)])
     

@@ -24,6 +24,7 @@ optuna = ">=4.8.0,<5"
 xgboost = ">=3.2.0,<4"
 plotly = ">=6.6.0,<7"
 seaborn = ">=0.13.2,<0.14"
+python-dotenv = ">=1.0,<2"
 
 [tool.pixi.tasks]
 mlflow-server = "mlflow server --backend-store-uri sqlite:///$PIXI_PROJECT_ROOT/src/data/mlflow.db --default-artifact-root $PIXI_PROJECT_ROOT/src/mlruns --port 5001"

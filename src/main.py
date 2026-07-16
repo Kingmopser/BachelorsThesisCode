@@ -1,18 +1,24 @@
-import os
-os.environ["XLA_FLAGS"] = "--xla_force_host_platform_device_count=8"
+from dotenv import load_dotenv
+load_dotenv()
 import jax.numpy as jnp
-from sklearn.datasets import fetch_openml
+import numpy as np
 from sklearn.metrics import root_mean_squared_error
 from sklearn.model_selection import train_test_split
 from bde import BdeRegressor
-from bde.loss import GaussianNLL
 import mlflow 
-import mlflow.data
 import os
-from pathlib import Path
 from PreProcessing.PreProcessing import LoadData,PreProcessing
 from config.metrics import GaussianNll, WinklerScore
-from config.config import BDE_GRID
+from config.config import (
+    MLFLOW_ARTIFACT_ROOT,
+    MLFLOW_DB,
+    IQR_TO_STD,
+    BDE_GRID,
+    GLOBAL_SEED,
+    ROBUST_SEEDS,
+    BDE_ACTIVE_OVERRIDE,
+    XGBOOSTLSS_CONFIG
+)
 import optuna
 from functools import partial
 from mlflow.tracking import MlflowClient
@@ -24,26 +30,18 @@ from xgboostlss.distributions.Gaussian import Gaussian
 from tabicl import TabICLRegressor
 from sklearn.linear_model import LinearRegression
 from sklearn.ensemble import RandomForestRegressor
-from scipy.stats import norm
 
-ROOT = Path(__file__).resolve().parent
-IQR_TO_STD = 1.3489795
-#mlflow db path 
-MLFLOW_DB = ROOT / "data" / "mlflow.db"
-MLFLOW_ARTIFACT_ROOT = ROOT / "mlruns"
+
 MLFLOW_DB.parent.mkdir(parents=True, exist_ok=True)
 MLFLOW_ARTIFACT_ROOT.mkdir(parents=True, exist_ok=True)
 mlflow.set_tracking_uri(f"sqlite:///{MLFLOW_DB}")
-
-
 
 
 def objective(trial,X_train,X_test,y_train,y_test):
             
             with mlflow.start_run(nested=True,run_name=f"trial_{trial.number}") as child_run:
                 
-                #define params
-                #bde_n_members =trial.suggest_int("n_members",4,10,step =1)
+                
                 bde_hidden_layers = ast.literal_eval(
                     trial.suggest_categorical("hidden_layers", BDE_GRID["hidden_layers"])
                 )
@@ -55,8 +53,10 @@ def objective(trial,X_train,X_test,y_train,y_test):
                         "warmup_steps_n_samples", BDE_GRID["warmup_steps_n_samples"]
                     )
                 )                                                                                         
-                epochs = 1200
-                validation_split = 0.15 # or 0.0 damnnnn ahahah
+                bde_epochs = ast.literal_eval(
+                    trial.suggest_categorical("epochs", BDE_GRID["epochs"])
+                )
+                validation_split = 0.15 
                 patience = 10
                 
                 params = {
@@ -65,8 +65,8 @@ def objective(trial,X_train,X_test,y_train,y_test):
                     "desired_energy_var_end": bde_desired_energy_var_end,
                     "warmup_steps":bde_warmup_steps,
                     "n_samples":bde_n_samples,
-                    "seed": global_seed,
-                    "epochs": epochs,
+                    "seed": GLOBAL_SEED,
+                    "epochs": bde_epochs,
                     "validation_split": validation_split,
                     "patience":patience
                 }
@@ -144,17 +144,17 @@ def RobustTest(X_train_HO, X_test_HO, y_train_HO, y_test_HO, seeds, run_name, da
     #current models
     models = {
        "BDE":BDEPredictor,
-        #"XGboostLSS":XGBoostLSSPredictor,
-        #"TabICL":TabICLPredictor,
-        #"LG":LGPredictor,
-        #"RF":RFPredictor
+        "XGboostLSS":XGBoostLSSPredictor,
+        "TabICL":TabICLPredictor,
+        "LG":LGPredictor,
+        "RF":RFPredictor
     }
     
     with mlflow.start_run(run_name=f"Robustnesstest_Data_{datasetname}") as run:
         for model,model_fn in models.items():
             with mlflow.start_run(nested=True,run_name=f"Model{model}_robust") as model_run:  
                 try:
-                    SeedRun(model_fn,seeds,X_train_HO, X_test_HO, y_train_HO, y_test_HO,best_child_params)
+                    SeedRun(model_fn,seeds,X_train_HO, X_test_HO, y_train_HO, y_test_HO,best_child_params,datasetname)
                 except Exception:
                     mlflow.set_tag("run_failed", True)
                     mlflow.log_text(traceback.format_exc(), "error.txt")
@@ -164,18 +164,11 @@ def RobustTest(X_train_HO, X_test_HO, y_train_HO, y_test_HO, seeds, run_name, da
                 
         
                     
-def BDEPredictor(X_train, y_train, X_test_HO,best_child_params,model_seed=12,**kwargs):
+def BDEPredictor(X_train, y_train, X_test_HO,best_child_params,**kwargs):
     
-    params = dict(best_child_params)  # copy
-
-    params["epochs"] = 800
-    params["patience"] = None
-    #del best_child_params["epochs"]
-    #del best_child_params["patience"]
-    #del best_child_params["validation_split"]
-
-    #best_child_params.update({"epochs":800})
-    #best_child_params.update({"patience":10})
+    params = dict(best_child_params).copy()  # copy
+    params.update(BDE_ACTIVE_OVERRIDE) #can be varied for each preferred ablation  
+   
     def _mlflow_safe(v):
         # MLflow's UI can display `None` as empty; stringify for clarity.
         return "none" if v is None else v
@@ -186,13 +179,14 @@ def BDEPredictor(X_train, y_train, X_test_HO,best_child_params,model_seed=12,**k
             "patience": _mlflow_safe(params.get("patience")),
             "validation_split": _mlflow_safe(params.get("validation_split")),
             "warmup_steps": params.get("warmup_steps"),
-            "n_samples": params.get("n_samples"),
+            "n_samples": params.get("n_samples"),       
             "seed": params.get("seed"),
+            "n_members": params.get("n_members")
         }
     )
     print(params)
     
-    # best_child_params.update({"epochs": 1200})
+   
     regressor = BdeRegressor(**params)
     regressor.fit(X_train,y_train.ravel())
     
@@ -200,23 +194,23 @@ def BDEPredictor(X_train, y_train, X_test_HO,best_child_params,model_seed=12,**k
         if getattr(regressor, "_bde", None) is not None and getattr(regressor._bde, "history", None):
             model0 = regressor._bde.history.get("Model0", {})
             epoch_history = model0.get("epoch", [])
+
             mlflow.log_param("bde_history_length_model0", int(len(epoch_history)))
             if "stop_epoch" in model0:
                 mlflow.log_param("bde_stop_epoch_model0", int(model0.get("stop_epoch")))
 
             trainloss = model0.get("trainloss")
             valloss = model0.get("valloss")
+
             snapshot_index = 400
-            checkpoint_epochs = [100, 200, 400, 600]
+            # Explicit checkpoints for comparing runs like epochs=800 vs epochs=1200.
+            checkpoint_epochs = [100, 200, 400, 600, 800, 1200]
 
             def _log_loss_history(loss_name, loss_values):
                 if loss_values is None or len(loss_values) == 0:
                     return
 
-                mlflow.log_metric(
-                    f"bde_{loss_name}_final_value_model0",
-                    float(loss_values[-1]),
-                )
+                mlflow.log_metric(f"bde_{loss_name}_final_value_model0", float(loss_values[-1]))
                 mlflow.log_param(
                     f"bde_{loss_name}_final_history_index_model0",
                     int(len(loss_values) - 1),
@@ -243,6 +237,21 @@ def BDEPredictor(X_train, y_train, X_test_HO,best_child_params,model_seed=12,**k
                             int(epoch_history[snapshot_index]),
                         )
 
+                # Log by *epoch value* (robust even if history is truncated by early stopping).
+                if epoch_history and len(epoch_history) == len(loss_values):
+                    epoch_list = [int(e) for e in epoch_history]
+                    for wanted_epoch in (800, 1200):
+                        if wanted_epoch in epoch_list:
+                            idx = epoch_list.index(wanted_epoch)
+                            mlflow.log_metric(
+                                f"bde_{loss_name}_at_epoch_{wanted_epoch}_value_model0",
+                                float(loss_values[idx]),
+                            )
+                            mlflow.log_param(
+                                f"bde_{loss_name}_history_idx_at_epoch_{wanted_epoch}_model0",
+                                int(idx),
+                            )
+
                 for checkpoint_epoch in checkpoint_epochs:
                     checkpoint_idx = checkpoint_epoch - 1
                     if checkpoint_idx < 0 or len(loss_values) <= checkpoint_idx:
@@ -262,16 +271,58 @@ def BDEPredictor(X_train, y_train, X_test_HO,best_child_params,model_seed=12,**k
                             int(epoch_history[checkpoint_idx]),
                         )
 
-            if trainloss is not None and len(trainloss) > 0:
-                _log_loss_history("trainloss", trainloss)
-            if valloss is not None and len(valloss) > 0:
-                _log_loss_history("valloss", valloss)
+            _log_loss_history("trainloss", trainloss)
+            _log_loss_history("valloss", valloss)
     except Exception:
         pass
     
     y_pred = regressor.predict(X_test_HO)
     mu,sigma = regressor.predict(X_test_HO,mean_and_std=True)
     _, intervals = regressor.predict(X_test_HO, credible_intervals=[0.05, 0.95])
+
+    # Prediction diagnostics: metrics can look identical while predictions differ slightly
+    # (or vice versa due to rounding)
+    try:
+        mu_np = np.asarray(mu)
+        sigma_np = np.asarray(sigma)
+        y_pred_np = np.asarray(y_pred)
+        pi_lower_np = np.asarray(intervals[0])
+        pi_upper_np = np.asarray(intervals[1])
+        width_np = pi_upper_np - pi_lower_np
+
+        def _log_pred_stats(name: str, arr: np.ndarray):
+            arr = arr.astype(np.float64, copy=False).ravel()
+            if arr.size == 0:
+                return
+            mlflow.log_metrics(
+                {
+                    f"bde_pred_{name}_mean": float(arr.mean()),
+                    f"bde_pred_{name}_std": float(arr.std(ddof=0)),
+                    f"bde_pred_{name}_min": float(arr.min()),
+                    f"bde_pred_{name}_max": float(arr.max()),
+                    f"bde_pred_{name}_l1_mean": float(np.mean(np.abs(arr))),
+                    f"bde_pred_{name}_linf": float(np.max(np.abs(arr))),
+                }
+            )
+
+        _log_pred_stats("y_pred", y_pred_np)
+        _log_pred_stats("mu", mu_np)
+        _log_pred_stats("sigma", sigma_np)
+        _log_pred_stats("pi_width", width_np)
+
+        # Stable fingerprint to quickly detect bit-identical predictions across runs.
+        # (Logged as params because MLflow metrics must be numeric.)
+        import hashlib
+
+        mlflow.log_params(
+            {
+                "bde_pred_mu_md5": hashlib.md5(mu_np.tobytes()).hexdigest(),
+                "bde_pred_sigma_md5": hashlib.md5(sigma_np.tobytes()).hexdigest(),
+                "bde_pred_y_pred_md5": hashlib.md5(y_pred_np.tobytes()).hexdigest(),
+            }
+        )
+    except Exception:
+        pass
         
     return {
         "y_pred":y_pred,       
@@ -281,26 +332,26 @@ def BDEPredictor(X_train, y_train, X_test_HO,best_child_params,model_seed=12,**k
         "pi_upper": intervals[1],
     }
     
-def XGBoostLSSPredictor(X_train, y_train, X_test_HO, model_seed=12,**kwargs):
+def XGBoostLSSPredictor(X_train, y_train, X_test_HO,datasetname ,model_seed=12,**kwargs):
     
     dtrain = xgb.DMatrix(X_train, label=y_train.ravel())
     dtest  = xgb.DMatrix(X_test_HO)
-    xgblss = XGBoostLSS(Gaussian(stabilization="None", response_fn="exp", loss_fn="nll")) # mention that without stabilization, weird performance
     
-    params = {
-    "eta": 0.05,
-    "max_depth": 6,
-    "subsample": 0.9,
-    "colsample_bytree": 0.9,
-    "tree_method": "hist",
-    "seed": model_seed,
-    }
+    cfg = XGBOOSTLSS_CONFIG[datasetname]
+    xgblss = XGBoostLSS(Gaussian(
+        stabilization=cfg["stabilization"],
+        response_fn=cfg["response_fn"],
+        loss_fn=cfg["loss_fn"],
+    )) # mention that without stabilization, weird performance
     
-    xgblss.train(params=params, dtrain=dtrain, num_boost_round=50)
+    params = dict(cfg["params"])
+    params["seed"] = model_seed
+    
+    xgblss.train(params=params, dtrain=dtrain, num_boost_round=cfg["num_boost_round"])
     
     pred_params = xgblss.predict(data=dtest, pred_type="parameters")
     
-    mu = pred_params["loc"].to_numpy()      # naming can be loc/scale for Gaussian
+    mu = pred_params["loc"].to_numpy()     
     sigma = pred_params["scale"].to_numpy()
     
     pred_q = xgblss.predict(
@@ -348,7 +399,7 @@ def TabICLPredictor(X_train, y_train, X_test_HO, model_seed = 12,**kwargs):
        "pi_upper":interval[:,1]
     } 
     
-def LGPredictor(X_train, y_train, X_test_HO, model_seed=12,**kwargs):
+def LGPredictor(X_train, y_train, X_test_HO,**kwargs):
     
     lr = LinearRegression()
     lr.fit(X_train, y_train.ravel())
@@ -388,7 +439,7 @@ def RFPredictor(X_train, y_train, X_test_HO, model_seed=12,**kwargs):
    } 
     
 
-def SeedRun(model_fn,seeds,X_train_HO, X_test_HO, y_train_HO, y_test_HO,bdeparam):    
+def SeedRun(model_fn,seeds,X_train_HO, X_test_HO, y_train_HO, y_test_HO,bdeparam,datasetname):    
     
     for i,seed in enumerate(seeds):            
         with mlflow.start_run(nested=True, run_name=f"seed{i}"):
@@ -400,7 +451,8 @@ def SeedRun(model_fn,seeds,X_train_HO, X_test_HO, y_train_HO, y_test_HO,bdeparam
                     y_train = y_train,
                     X_test_HO = X_test_HO, 
                     best_child_params = bdeparam,
-                    model_seed=12)
+                    model_seed=GLOBAL_SEED,
+                    datasetname=datasetname)
             
             if "y_pred" in preds:
                 rmse = root_mean_squared_error(y_true=y_test_HO.ravel(),y_pred=preds.get("y_pred",""))
@@ -423,7 +475,7 @@ def SeedRun(model_fn,seeds,X_train_HO, X_test_HO, y_train_HO, y_test_HO,bdeparam
                 mlflow.log_metrics({"Negative_log_likelihood": float(nll)}) 
           
                 
-def runExperiment(datasetname, seeds, global_seed, run_hpo = False, n_trials = 50):
+def runExperiment(datasetname,dataset ,seeds, global_seed, run_hpo = False, n_trials = 50):
     
     experiment_name = f"Experiment_Dataset_{datasetname}"
     if mlflow.get_experiment_by_name(experiment_name) is None:
@@ -435,7 +487,7 @@ def runExperiment(datasetname, seeds, global_seed, run_hpo = False, n_trials = 5
     mlflow.autolog()
     
     #we do preprocessing for LG,RF,CATBOOSTLSS
-    X_train_HO, X_test_HO, y_train_HO, y_test_HO, yScaler = PreProcessing(datasetname,data=datasets[datasetname],random_seed=global_seed) # we do 1 hold-out-split
+    X_train_HO, X_test_HO, y_train_HO, y_test_HO, yScaler = PreProcessing(datasetname,data=dataset,random_seed=global_seed) # we do 1 hold-out-split
 
 
     # split train in to test and val
@@ -472,20 +524,16 @@ def runExperiment(datasetname, seeds, global_seed, run_hpo = False, n_trials = 5
     )
         
 if __name__ == "__main__":
-    '''client = MlflowClient()
-    exp = client.get_experiment_by_name("Experiment_Dataset_healthcare_insurance_expenses")
-    client.restore_experiment(exp.experiment_id)'''
-    
-    model_seed = 14
     datasets = LoadData()
-    seeds = [24,35,123]
-    global_seed = 12
     
-    for data in datasets:
+    for datasetname, dataset in datasets.items():
         try:
-            runExperiment(data,seeds=seeds,global_seed=global_seed,n_trials=3,run_hpo=False)        
+            runExperiment(datasetname=datasetname,
+                          dataset=dataset,
+                          seeds=ROBUST_SEEDS,
+                          global_seed=GLOBAL_SEED,
+                          n_trials=1,
+                          run_hpo=True)        
+            
         except Exception as e:
             print(f"Dataset loading failed | Error: {e}")
-            
-            
-   

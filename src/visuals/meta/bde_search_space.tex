@@ -1,0 +1,20 @@
+% Hyperparameter search space for BDE (as used in Optuna GridSampler).
+% Note: var_start_end and warmup_steps_n_samples are specified as paired tuples in code,
+% but are shown here as separate hyperparameters for readability.
+\begin{table}[t]
+\centering
+\small
+\caption{Hyperparameter search space for BDE.}
+\label{tab:bde_search_space}
+\begin{tabular}{ll}
+\toprule
+Hyperparameter & Space \\
+\midrule
+\texttt{hidden\_layers} & Choice(\{[16,16], [32,32], [16,16,16,16],\linebreak [32,32,32], [32,32,32,32]\}) \\
+\texttt{desired\_energy\_var\_start} & Choice(\{0.5, 0.05, 0.005, 0.0005\}) \\
+\texttt{desired\_energy\_var\_end} & Choice(\{0.1, 0.01, 0.001, 0.0001\}) \\
+\texttt{warmup\_steps} & Choice(\{1000, 2500, 5000, 10000\}) \\
+\texttt{n\_samples} & Choice(\{200, 500, 1000, 5000\}) \\
+\bottomrule
+\end{tabular}
+\end{table}

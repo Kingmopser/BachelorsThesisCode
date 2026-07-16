@@ -15,7 +15,7 @@ The benchmark loads selected OpenML regression datasets, preprocesses them, perf
 
 The main benchmark is executed from `src/main.py`. Ablation studies are not part of the default benchmark run; they are performed by manually adjusting the BDE configuration and selected dataset.
 
-![Automated pipeline diagram](src/visuals/automated_pipeline_diagram.jpg)
+![Automated pipeline diagram](src/visuals/meta/automated_pipeline_diagram.jpg)
 
 ## Project Structure
 
@@ -86,6 +86,7 @@ The benchmark logs all experiment results with MLflow.
 Start the MLflow server in a separate terminal:
 
 ```bash
+cd src
 pixi run mlflow-server
 ```
 
@@ -106,32 +107,35 @@ The benchmark is configured in `src/config/config.py`.
 The main configuration values are:
 
 ```python
+ROBUST_SEEDS = [24,35,123]
 GLOBAL_SEED = 12
-ROBUST_SEEDS = [24, 35, 123]
 
 DATASETS = [
-    "wine_quality",
-    "healthcare_insurance_expenses",
-    "Another-Dataset-on-used-Fiat-500",
-    "miami_housing",
+     "wine_quality",
+     "healthcare_insurance_expenses", 
+     "Another-Dataset-on-used-Fiat-500", 
+     "miami_housing"
 ]
 
 BDE_GRID = {
-    "hidden_layers": ["[4,4]", "[1]", "[4]", "[8]"],
-    "var_start_end": ["(0.5,0.1)"],
-    "warmup_steps_n_samples": ["(2500,500)"],
-    "epochs": ["25", "50", "75"],
+    "hidden_layers": ["[16,16]", "[32,32]", "[16,16,16,16]", "[32,32,32]"],
+    "var_start_end": ["(0.5,0.1)", "(0.05,0.01)", "(0.005,0.001)", "(0.0005,0.0001)"],
+    "warmup_steps_n_samples": ["(1000,200)", "(2500,500)", "(5000,1000)", "(10000,5000)"],
+    "epochs": ["400"]
 }
+
+BDE_ACTIVE_OVERRIDE = {}
 ```
 
-`DATASETS` controls which OpenML datasets are loaded. `BDE_GRID` controls the BDE hyperparameter combinations evaluated during HPO. `GLOBAL_SEED` controls the deterministic holdout split and model seed. `ROBUST_SEEDS` controls the repeated seed runs used in the robustness comparison.
+`DATASETS` controls which OpenML datasets are loaded. `BDE_GRID` controls the BDE hyperparameter combinations evaluated during HPO. `GLOBAL_SEED` controls the deterministic holdout split and model seed. `ROBUST_SEEDS` controls the repeated train subsplits used in the robustness comparison. `BDE_ACTIVE_OVERRIDE` is empty for the main benchmark and can be set to one of the ablation override dictionaries in `config.py` for additional ablation studies.
 
 ## Running The Main Benchmark
 
-After installing the environment and starting MLflow, run the benchmark from the repository root:
+After installing the environment and starting MLflow, run the benchmark from the `src` directory:
 
 ```bash
-pixi run python src/main.py
+cd src
+pixi run python main.py
 ```
 
 The main entry point is:
@@ -140,10 +144,11 @@ The main entry point is:
 if __name__ == "__main__":
     datasets = LoadData()
 
-    for data in datasets:
+    for datasetname, dataset in datasets.items():
         try:
             runExperiment(
-                data,
+                datasetname=datasetname,
+                dataset=dataset,
                 seeds=ROBUST_SEEDS,
                 global_seed=GLOBAL_SEED,
                 n_trials=1,
@@ -158,12 +163,13 @@ The number of HPO trials and whether HPO is executed can be changed in the `runE
 The function definition is:
 
 ```python
-def runExperiment(datasetname, seeds, global_seed, run_hpo=False, n_trials=50):
+def runExperiment(datasetname, dataset, seeds, global_seed, run_hpo=False, n_trials=50):
 ```
 
 The important parameters are:
 
 - `datasetname`: name of the dataset to run.
+- `dataset`: the loaded data dictionary containing `X` and `y`.
 - `seeds`: list of robustness seeds.
 - `global_seed`: seed used for the main holdout split.
 - `run_hpo`: whether to run BDE HPO before the robustness test.
@@ -203,7 +209,7 @@ Logged metrics include:
 
 - RMSE
 - Mean Winkler Score
-- Winkler coverage
+- Coverage
 - Negative log-likelihood
 
 ## Results And Plot Generation
@@ -251,7 +257,21 @@ The user provides the relevant MLflow experiment ID, run ID, and dataset name. T
 
 Ablation studies are not executed automatically by `src/main.py`.
 
-To perform an ablation study, manually adjust the relevant BDE settings in `src/config/config.py`, select the target dataset, and rerun the experiment. The resulting MLflow run can then be processed with the orchestration helpers or the ablation notebooks.
+To perform an ablation study, manually adjust the relevant BDE settings in `src/config/config.py`, select the target dataset, and rerun the experiment. The standard HPO search space is controlled by `BDE_GRID`; additional fixed BDE changes after HPO are controlled by `BDE_ACTIVE_OVERRIDE`.
+
+For the main benchmark, keep:
+
+```python
+BDE_ACTIVE_OVERRIDE = {}
+```
+
+For an ablation, set `BDE_ACTIVE_OVERRIDE` to one of the override dictionaries defined in `config.py`, for example:
+
+```python
+BDE_ACTIVE_OVERRIDE = BDE_EPOCHS_800_OVERRIDE
+```
+
+The final BDE parameters after applying the active override are logged to MLflow during the robustness run. The resulting MLflow run can then be processed with the orchestration helpers or the ablation notebooks.
 
 The ablation helper module is:
 
@@ -265,10 +285,9 @@ The notebooks in `archive/examples/` were used for exploratory analysis and thes
 
 Important notebooks:
 
-- `archive/examples/hpo_tables.ipynb`: creates raw and aggregated HPO tables for a selected MLflow HPO run.
+- `archive/examples/hpo_tables.ipynb`: creates raw and aggregated HPO tables for a selected MLflow HPO run. To use it, update the `DATASET_SLUG`, `EXPERIMENT_ID`, and `HPO_PARENT_RUN_ID` values in the configuration cell and run the notebook sections needed for raw HPO tables, aggregated HPO tables, or early-stopping summaries. Outputs are written to `src/visuals/raw/`.
 - `archive/examples/4_4_Ablation.ipynb`: creates the architecture ablation plots used in the thesis.
 - `archive/examples/plot_test.ipynb`: creates epoch-vs-baseline plots.
-- `archive/examples/data_exploring.ipynb`: contains initial OpenML dataset exploration.
 
 Some thesis tables, such as manually written search-space definitions, were created separately and are stored as generated visual/table artifacts.
 
@@ -279,4 +298,3 @@ Some thesis tables, such as manually written search-space definitions, were crea
 - MLflow stores experiment metadata in `src/data/mlflow.db`.
 - The full benchmark can be computationally expensive and is not intended as a quick smoke test.
 - The code path in `src/main.py` is the main reproducible benchmark path; notebooks are secondary analysis artifacts.
-

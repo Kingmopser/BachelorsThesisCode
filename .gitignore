@@ -8,3 +8,14 @@ ToDos.txt
 .yaml
 __pycache__
 src/.DS_Store
+
+.DS_Store
+**/.DS_Store
+__pycache__/
+**/__pycache__/
+*.pyc
+.ipynb_checkpoints/
+archive/mlruns/*
+src/mlruns/*
+
+
