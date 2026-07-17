@@ -37,9 +37,7 @@ The main benchmark is executed from `src/main.py`. Ablation studies are not part
 │   │   ├── helpers.py
 │   │   └── ablation_metrics.py
 │   ├── data/
-│   │   ├── mlflow.db
 │   │   └── task_metadata_tabarena51.csv
-│   ├── mlruns/
 │   └── visuals/
 └── archive/
     └── examples/
@@ -67,6 +65,12 @@ The environment is managed with Pixi. The relevant dependency definitions are st
 
 Use these files to reproduce the same package environment.
 
+Create a `.env` file in the project root with the following content:
+
+```bash
+XLA_FLAGS="--xla_force_host_platform_device_count=8"
+```
+
 Install Pixi if it is not already available:
 
 ```bash
@@ -90,6 +94,8 @@ cd src
 pixi run mlflow-server
 ```
 
+On a fresh clone, `src/data/mlflow.db` does not need to exist in advance. MLflow creates the SQLite database file automatically on first start. The `src/mlruns/` artifact directory is also created automatically once experiments are executed.
+
 The Pixi task is defined in `pyproject.toml` and uses:
 
 ```text
@@ -97,8 +103,6 @@ backend store: src/data/mlflow.db
 artifact root: src/mlruns
 port: 5001
 ```
-
-The `src/mlruns` directory is created automatically once experiments are executed.
 
 ## Configuration
 
@@ -220,11 +224,15 @@ MLflow stores the experiment metadata in:
 src/data/mlflow.db
 ```
 
+This database is a local runtime artifact and is typically created automatically when the MLflow server starts.
+
 MLflow artifacts are written to:
 
 ```text
 src/mlruns/
 ```
+
+This directory is also created automatically during experiment execution.
 
 The helper functions in `src/Orchestration/helpers.py` create result tables and HPO visualizations from MLflow runs.
 
@@ -296,7 +304,7 @@ Some thesis tables, such as manually written search-space definitions, were crea
 - The project is designed around the Pixi environment defined by `pyproject.toml` and `pixi.lock`.
 - The lock file contains package resolutions for `osx-arm64` and `linux-64`.
 - Datasets are loaded from OpenML using task metadata in `src/data/task_metadata_tabarena51.csv` and require internet to load.
-- MLflow stores experiment metadata in `src/data/mlflow.db`.
+- MLflow stores experiment metadata in a local SQLite database at `src/data/mlflow.db`, which is created automatically when needed.
 - The full benchmark can be computationally expensive and is not intended as a quick smoke test.
 - The code path in `src/main.py` is the main reproducible benchmark path; notebooks are secondary analysis artifacts.
 - Start the MLflow server before running `src/main.py`; otherwise experiment logging may fail.

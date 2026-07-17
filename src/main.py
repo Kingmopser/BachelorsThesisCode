@@ -1,5 +1,7 @@
 from dotenv import load_dotenv
 load_dotenv()
+import os
+
 import jax.numpy as jnp
 import numpy as np
 from sklearn.metrics import root_mean_squared_error
